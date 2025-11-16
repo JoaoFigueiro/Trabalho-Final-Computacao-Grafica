@@ -88,41 +88,60 @@ function initGame() {
 }
 
 
-function loadTreeModel() {
-    const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, 4);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a2a0a });
-    const leavesGeo = new THREE.ConeGeometry(2, 6, 8);
-    const leavesMat = new THREE.MeshStandardMaterial({ color: 0x003300 });
+let treeModel = null;
 
-    const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-    const leaves = new THREE.Mesh(leavesGeo, leavesMat);
-    leaves.position.y = 5;
+function loadTreeModel(callback) {
+    if (treeModel) {
+        callback(treeModel.clone());
+        return;
+    }
 
-    const tree = new THREE.Group();
-    tree.add(trunk);
-    tree.add(leaves);
+    const treePath = "/assets/GreenPine";
 
-    tree.castShadow = true;
-    tree.receiveShadow = true;
+    const texture = new THREE.TextureLoader().load(
+        treePath + "/Branches0018_1_S.png"
+    );
 
-    return tree;
+    const objLoader = new OBJLoader();
+    objLoader.load(treePath + "/Tree2.obj", (tree) => {
+
+        tree.traverse((child) => {
+            if (child.isMesh) {
+                child.material = new THREE.MeshStandardMaterial({
+                    map: texture,
+                    alphaTest: 0.3,
+                    side: THREE.DoubleSide
+                });
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
+
+        tree.scale.set(1, 1, 1);
+
+        treeModel = tree;
+        callback(tree.clone());
+    });
 }
+
 
 function createTrees() {
     for (let i = 0; i < 300; i++) {
 
-        const tree = loadTreeModel();
+        loadTreeModel((tree) => {
 
-        let x, z;
-        do {
-            x = (Math.random() - 0.5) * 190;
-            z = (Math.random() - 0.5) * 190;
-        } while (Math.abs(x) < 10 && Math.abs(z) < 10);
+            let x, z;
+            do {
+                x = (Math.random() - 0.5) * 190;
+                z = (Math.random() - 0.5) * 190;
+            } while (Math.abs(x) < 10 && Math.abs(z) < 10);
 
-        tree.position.set(x, 2, z);
-        scene.add(tree);
+            tree.position.set(x, -1.2, z);
 
-        trees.push({ position: tree.position, radius: 2 });
+            scene.add(tree);
+
+            trees.push({ position: tree.position, radius: 2 });
+        });
     }
 }
 
@@ -149,46 +168,34 @@ function createPages() {
 }
 
 function createSlenderman() {
-    const headGeo = new THREE.SphereGeometry(0.4, 16, 16);
-    const bodyGeo = new THREE.CylinderGeometry(0.3, 0.3, 2.5);
-    const armGeo = new THREE.CylinderGeometry(0.1, 0.1, 1.8);
-    const legGeo = new THREE.CylinderGeometry(0.15, 0.15, 2.0);
+    const basePath = "/assets/Slenderman";
 
-    const mat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 });
+    const texture = new THREE.TextureLoader().load(
+        basePath + "/Textures/Tex_0666_0.PNG"
+    );
 
-    slenderman = new THREE.Group();
+    const objLoader = new OBJLoader();
+        objLoader.load(
+            basePath + "/3DS Max/Slenderman Model.obj",
+            function (slender) {
 
-    const head = new THREE.Mesh(headGeo, mat);
-    head.position.y = 2.0;
+                slender.traverse(function (child) {
+                    if (child.isMesh) {
+                        child.material = new THREE.MeshStandardMaterial({
+                            map: texture
+                        });
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
 
-    const body = new THREE.Mesh(bodyGeo, mat);
-    body.position.y = 0.75;
+                slender.scale.set(0.008, 0.008, 0.008 );
+                slender.position.set(0, 2.68, 0);
 
-    const arm1 = new THREE.Mesh(armGeo, mat);
-    arm1.position.set(0.6, 1.2, 0);
-    arm1.rotation.z = Math.PI / 8;
+                scene.add(slender);
+            }
+        );
 
-    const arm2 = new THREE.Mesh(armGeo, mat);
-    arm2.position.set(-0.6, 1.2, 0);
-    arm2.rotation.z = -Math.PI / 8;
-
-    const leg1 = new THREE.Mesh(legGeo, mat);
-    leg1.position.set(0.2, -0.75, 0);
-
-    const leg2 = new THREE.Mesh(legGeo, mat);
-    leg2.position.set(-0.2, -0.75, 0);
-
-    slenderman.add(head);
-    slenderman.add(body);
-    slenderman.add(arm1);
-    slenderman.add(arm2);
-    slenderman.add(leg1);
-    slenderman.add(leg2);
-
-    slenderman.castShadow = true;
-
-    slenderman.position.set(50, 1.75, -50);
-    scene.add(slenderman);
 }
 
 
