@@ -75,6 +75,7 @@ function initGame() {
     ground.receiveShadow = true;
     scene.add(ground);
 
+    createGrass();
     createTrees();
     createPages();
     createSlenderman();
@@ -122,6 +123,34 @@ function loadTreeModel(callback) {
         treeModel = tree;
         callback(tree.clone());
     });
+}
+
+function createGrass() {
+    const grassTexture = new THREE.TextureLoader().load(
+    "/assets/Ground/grass.jpg"
+    );
+
+    grassTexture.wrapS = THREE.RepeatWrapping;
+    grassTexture.wrapT = THREE.RepeatWrapping;
+    grassTexture.repeat.set(40, 40);
+
+    const groundMaterial = new THREE.MeshStandardMaterial({
+        map: grassTexture,
+        roughness: 1,
+        metalness: 0
+    });
+
+    const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(400, 400),
+        groundMaterial
+    );
+
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    ground.receiveShadow = true;
+
+    scene.add(ground);
+
 }
 
 
