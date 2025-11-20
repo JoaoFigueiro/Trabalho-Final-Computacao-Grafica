@@ -2,6 +2,14 @@ import * as THREE from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 
 let scene, camera, renderer, player, flashlight, slenderman;
+let loadingManager;
+let loadingScreen, loadingBar, loadingText;
+
+let minimapContainer, playerMarker, houseMarker, fireMarker;
+let isMapVisible = true;
+
+const mapScale = 0.8;
+const mapSize = 200;
 
 const clock = new THREE.Clock();
 const trees = [];
@@ -57,6 +65,9 @@ let soundAmbience;
 
 export function init() {
     instructions = document.getElementById('instructions');
+    // Começa escondido para não clicarem antes de carregar
+    instructions.style.display = 'none';
+
     crosshair = document.getElementById('crosshair');
     uiContainer = document.getElementById('ui-container');
     pageCountUI = document.getElementById('page-count');
@@ -66,6 +77,29 @@ export function init() {
 
     initStaticEffect();
     initInteractUI();
+    initMinimap(); // Se você implementou o minimapa
+
+    // --- NOVO CÓDIGO DE LOADING ---
+    initLoadingUI();
+
+    loadingManager = new THREE.LoadingManager();
+
+    // Ocorre a cada item carregado
+    loadingManager.onProgress = function (url, itemsLoaded, itemsTotal) {
+        const progress = (itemsLoaded / itemsTotal) * 100;
+        loadingBar.style.width = progress + '%';
+        loadingText.innerText = `Carregando Pesadelos... ${Math.round(progress)}%`;
+    };
+
+    // Ocorre quando TUDO termina
+    loadingManager.onLoad = function () {
+        // Some com a tela de loading
+        loadingScreen.style.display = 'none';
+        // Mostra o "Clique para Jogar"
+        instructions.style.display = 'flex';
+    };
+    // -----------------------------
+
     initGame();
     animate();
 }
@@ -139,7 +173,7 @@ function initAudio() {
     listener = new THREE.AudioListener();
     camera.add(listener);
 
-    const audioLoader = new THREE.AudioLoader();
+    const audioLoader = new THREE.AudioLoader(loadingManager);
 
     // 1. Som de Estática (Loop)
     soundStatic = new THREE.Audio(listener);
@@ -246,7 +280,7 @@ function loadTreeModel(callback) {
     }
 
     const treePath = "/assets/GreenPine";
-    const textureLoader = new THREE.TextureLoader();
+    const textureLoader = new THREE.TextureLoader(loadingManager);
 
     // 1. Carregar texturas
     const barkTexture = textureLoader.load(treePath + "/bark_0004.jpg");
@@ -266,7 +300,7 @@ function loadTreeModel(callback) {
     barkTexture.repeat.set(1, 6); 
     // ------------------------------------
 
-    const objLoader = new OBJLoader();
+    const objLoader = new OBJLoader(loadingManager);
     objLoader.load(treePath + "/Tree.obj", (tree) => {
 
         tree.traverse((child) => {
@@ -338,11 +372,11 @@ function createHouse() {
     console.log("Casa (com colisão reforçada) criada em:", housePos.x, housePos.z);
 
     // --- PASSO 2: CARREGAR O VISUAL ---
-    const textureLoader = new THREE.TextureLoader();
+    const textureLoader = new THREE.TextureLoader(loadingManager);
     const diffuseMap = textureLoader.load(path + "/cottage_diffuse.png");
     diffuseMap.colorSpace = THREE.SRGBColorSpace;
 
-    const objLoader = new OBJLoader();
+    const objLoader = new OBJLoader(loadingManager);
     objLoader.load(path + "/cottage_obj.obj", (house) => {
         
         house.traverse((child) => {
@@ -379,7 +413,7 @@ function createHouse() {
 
 function createCampfire() {
     const campfirePath = "/assets/Campfire"; 
-    const textureLoader = new THREE.TextureLoader();
+    const textureLoader = new THREE.TextureLoader(loadingManager);
     
     // Carrega texturas
     const woodTexture = textureLoader.load(campfirePath + "/Campfire_MAT_BaseColor_00.jpg");
@@ -391,7 +425,7 @@ function createCampfire() {
     woodTexture.colorSpace = THREE.SRGBColorSpace;
     fireTexture.colorSpace = THREE.SRGBColorSpace;
 
-    const objLoader = new OBJLoader();
+    const objLoader = new OBJLoader(loadingManager);
     
     // Carrega o modelo da madeira
     objLoader.load(campfirePath + "/Campfire_clean.OBJ", (campfire) => {
@@ -507,7 +541,7 @@ function createCampfire() {
 }
 
 function createGrass() {
-    const grassTexture = new THREE.TextureLoader().load(
+    const grassTexture = new THREE.TextureLoader(loadingManager).load(
     "/assets/Ground/grass.jpg"
     );
 
@@ -610,8 +644,8 @@ function createTrees() {
 
 function createSlenderman() {
     const basePath = "/assets/Slenderman";
-    const texture = new THREE.TextureLoader().load(basePath + "/Textures/Tex_0666_0.PNG");
-    const objLoader = new OBJLoader();
+    const texture = new THREE.TextureLoader(loadingManager).load(basePath + "/Textures/Tex_0666_0.PNG");
+    const objLoader = new OBJLoader(loadingManager);
 
     objLoader.load(basePath + "/3DS Max/Slenderman Model.obj", function (slender) {
         slender.traverse(function (child) {
@@ -692,6 +726,11 @@ function onKeyDown(event) {
         case 'KeyA': movement.left = true; break;
         case 'KeyD': movement.right = true; break;
 
+        case 'KeyM':
+            isMapVisible = !isMapVisible;
+            minimapContainer.style.display = isMapVisible ? 'block' : 'none';
+            break;
+
         case 'KeyF':
             // Só funciona se o jogo estiver rodando e tiver bateria
             if (!gameState.gameOver && !gameState.gameWon && gameState.batteryLevel > 0) {
@@ -758,7 +797,8 @@ function animate() {
         
         // Atualiza as partículas do fogo
         updateFireParticles(delta); // <--- ADICIONE ISSO
-        
+        updateMinimap();
+
         // Efeito de luz tremeluzindo (mantive o anterior)
         if (campfireLight) {
             campfireLight.intensity = 40 + Math.sin(time * 10) * 10 + Math.random() * 5;
@@ -1063,4 +1103,201 @@ function handleGameWin() {
     winMessage.style.color = '#ffaa00';
     
     winMessage.style.display = 'block';
+}
+
+function initMinimap() {
+    // Container do Mapa (Fundo preto semitransparente)
+    minimapContainer = document.createElement('div');
+    Object.assign(minimapContainer.style, {
+        position: 'absolute',
+        top: '20px',
+        right: '20px',
+        width: `${mapSize}px`,
+        height: `${mapSize}px`,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        border: '2px solid #444',
+        borderRadius: '50%', // Redondo estilo radar
+        overflow: 'hidden',
+        zIndex: '100',
+        display: 'block'
+    });
+    document.body.appendChild(minimapContainer);
+
+    // Marcador do Jogador (Seta ou ponto)
+    playerMarker = document.createElement('div');
+    Object.assign(playerMarker.style, {
+        position: 'absolute',
+        width: '10px',
+        height: '10px',
+        backgroundColor: '#00ff00', // Verde
+        borderRadius: '50%',
+        transform: 'translate(-50%, -50%)',
+        zIndex: '102'
+    });
+    minimapContainer.appendChild(playerMarker);
+
+    // Marcador da Casa (Ícone azul)
+    houseMarker = document.createElement('div');
+    Object.assign(houseMarker.style, {
+        position: 'absolute',
+        width: '12px',
+        height: '12px',
+        backgroundColor: '#00aaff', // Azul
+        border: '1px solid white',
+        transform: 'translate(-50%, -50%)',
+        zIndex: '101'
+    });
+    minimapContainer.appendChild(houseMarker);
+
+    // Marcador da Fogueira (Ícone Laranja)
+    fireMarker = document.createElement('div');
+    Object.assign(fireMarker.style, {
+        position: 'absolute',
+        width: '10px',
+        height: '10px',
+        backgroundColor: '#ff5500', // Laranja
+        borderRadius: '50%',
+        boxShadow: '0 0 5px #ff5500',
+        transform: 'translate(-50%, -50%)',
+        zIndex: '101',
+        display: 'none' // Começa invisível até a fogueira ser criada
+    });
+    minimapContainer.appendChild(fireMarker);
+
+    // Texto de ajuda
+    const mapHelp = document.createElement('div');
+    mapHelp.innerText = "[M] Mapa";
+    Object.assign(mapHelp.style, {
+        position: 'absolute',
+        bottom: '-25px',
+        right: '0',
+        width: '100%',
+        textAlign: 'center',
+        color: 'white',
+        fontFamily: 'Arial',
+        fontSize: '12px'
+    });
+    minimapContainer.appendChild(mapHelp);
+}
+
+function updateMinimap() {
+    if (!isMapVisible || !player) return;
+
+    // O centro do mapa na tela
+    const cx = mapSize / 2;
+    const cy = mapSize / 2;
+
+    // Posição do jogador no mundo
+    const px = player.position.x;
+    const pz = player.position.z;
+
+    // --- ATUALIZAR JOGADOR ---
+    // No estilo "Radar Fixo" (O jogador fica no centro, o mundo gira):
+    // Vamos fazer o estilo "Mapa Estático" (O jogador se move no mapa), que é mais fácil de ler para achar itens.
+
+    // Converter Mundo (-100 a 100) para Mapa (0 a 200)
+    // Assumindo que o mapa tem +-100 de tamanho
+    const mapPlayerX = cx + (px * mapScale);
+    const mapPlayerY = cy + (pz * mapScale);
+
+    playerMarker.style.left = `${mapPlayerX}px`;
+    playerMarker.style.top = `${mapPlayerY}px`;
+
+    // Rotacionar seta do jogador com a câmera (opcional, mas legal)
+    // Pegamos a rotação Y da câmera para girar a seta
+    // playerMarker.style.transform = `translate(-50%, -50%) rotate(${-player.rotation.y}rad)`;
+
+    // --- ATUALIZAR CASA ---
+    const mapHouseX = cx + (housePos.x * mapScale);
+    const mapHouseY = cx + (housePos.z * mapScale);
+    houseMarker.style.left = `${mapHouseX}px`;
+    houseMarker.style.top = `${mapHouseY}px`;
+
+    // --- ATUALIZAR FOGUEIRA ---
+    if (campfirePos.lengthSq() > 0) { // Se já foi definida
+        fireMarker.style.display = 'block';
+        const mapFireX = cx + (campfirePos.x * mapScale);
+        const mapFireY = cx + (campfirePos.z * mapScale);
+        fireMarker.style.left = `${mapFireX}px`;
+        fireMarker.style.top = `${mapFireY}px`;
+    }
+
+    // --- ATUALIZAR PÁGINAS (O ponto principal) ---
+    // Primeiro, removemos os pontos antigos de página para redesenhar (forma simples)
+    // Nota: Para otimização extrema, faríamos pool, mas para 8 páginas isso é ok.
+    const existingPageDots = document.querySelectorAll('.page-dot');
+    existingPageDots.forEach(dot => dot.remove());
+
+    pages.forEach(page => {
+        const dot = document.createElement('div');
+        dot.className = 'page-dot'; // Marcador para podermos remover depois
+        Object.assign(dot.style, {
+            position: 'absolute',
+            width: '6px',
+            height: '6px',
+            backgroundColor: '#ff0000', // Vermelho
+            borderRadius: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: '100'
+        });
+
+        const mapPageX = cx + (page.position.x * mapScale);
+        const mapPageY = cx + (page.position.z * mapScale);
+
+        dot.style.left = `${mapPageX}px`;
+        dot.style.top = `${mapPageY}px`;
+
+        minimapContainer.appendChild(dot);
+    });
+}
+
+
+function initLoadingUI() {
+    // Fundo preto cobrindo a tela
+    loadingScreen = document.createElement('div');
+    Object.assign(loadingScreen.style, {
+        position: 'absolute',
+        top: '0',
+        left: '0',
+        width: '100%',
+        height: '100%',
+        backgroundColor: '#000000',
+        zIndex: '1000', // Fica na frente de tudo
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        fontFamily: 'Arial, sans-serif'
+    });
+
+    // Texto "Carregando..."
+    loadingText = document.createElement('div');
+    loadingText.innerText = "Carregando Pesadelos... 0%";
+    loadingText.style.color = '#ffffff';
+    loadingText.style.marginBottom = '20px';
+    loadingText.style.fontSize = '20px';
+    loadingScreen.appendChild(loadingText);
+
+    // Container da Barra (borda)
+    const barContainer = document.createElement('div');
+    Object.assign(barContainer.style, {
+        width: '300px',
+        height: '20px',
+        border: '2px solid #ffffff',
+        borderRadius: '10px',
+        overflow: 'hidden'
+    });
+    loadingScreen.appendChild(barContainer);
+
+    // A Barra em si (preenchimento)
+    loadingBar = document.createElement('div');
+    Object.assign(loadingBar.style, {
+        width: '0%',
+        height: '100%',
+        backgroundColor: '#ff0000', // Vermelho sangue
+        transition: 'width 0.2s'
+    });
+    barContainer.appendChild(loadingBar);
+
+    document.body.appendChild(loadingScreen);
 }
